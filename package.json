@@ -1,0 +1,23 @@
+{
+  "name": "nodescala",
+  "version": "1.0.0",
+  "description": "Some notes on blending scala and javascript together via node and graaljs.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://aappddeevv@github.com/aappddeevv/nodescala.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aappddeevv/nodescala/issues"
+  },
+  "homepage": "https://github.com/aappddeevv/nodescala#readme",
+  "dependencies": {
+    "download": "^8.0.0"
+  }
+}
