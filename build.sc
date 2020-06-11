@@ -4,7 +4,7 @@ import $ivy.`com.lihaoyi::mill-contrib-bloop:$MILL_VERSION`
 //import $ivy.`com.lihaoyi::mill-scalajslib:$MILL_VERSION`
 
 trait DottyProject extends ScalaModule {
-  val scalaVersion = "0.24.0-RC1"
+  val scalaVersion = "0.25.0-RC1"
   def scalacOptions = Seq("-indent", "-Yindent-colons", "-Ycheck-init")
 
 }
