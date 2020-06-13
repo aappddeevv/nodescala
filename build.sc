@@ -38,6 +38,8 @@ trait Example extends ScalaModule {
     val cps = runClasspath().map(_.path.toIO.getAbsolutePath)
     val cp = cps.mkString(java.io.File.pathSeparator)
     println(cp)
+    println("Writing classpath to classpath.txt")
+    os.write.over(os.pwd /"classpath.txt",cp)
   }
 }
 

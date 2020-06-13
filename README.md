@@ -128,6 +128,16 @@ Note on mill and dotty:
 This repo translates Mike's work to dotty and all credit for anything clever
 goes to everyone else.
 
+# Relevant interop
+
+If you place a js file inside a jar, you can access it directly assuming you used
+`node --jvm --vm.cp=yourjar.jar`:
+
+```javascript
+const cl =  Java.type("java.lang.ClassLoader").getSystemClassLoader()
+const source = Buffer.from(cl.getResource("nodejs/boot.js").getContent().readAllBytes()).toString("utf-8")
+```
+
 # License
 
 Apache, just like Mike Hearn's since there is code from his repo.

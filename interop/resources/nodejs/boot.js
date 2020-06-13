@@ -1,3 +1,8 @@
+//
+// Use this to boot a JVM program that has a main or use this 
+// to start the JVM main program but also as part of starting
+// your own nodejs program.
+//
 const vm = require("vm")
 
 // Set up a task queue that we'll proxy onto the NodeJS main thread.
