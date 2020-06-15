@@ -3,7 +3,6 @@
 // to start the JVM main program but also as part of starting
 // your own nodejs program.
 //
-const vm = require("vm")
 
 // Set up a task queue that we'll proxy onto the NodeJS main thread.
 //
@@ -44,7 +43,8 @@ const sliceStart = process.argv ? process.argv.indexOf("--") : -1
 
 // We need this wrapper around eval because GraalJS barfs if we try to call eval() directly from Java context, it assumes
 // it will only ever be called from JS context.
-Java.type('nodejs.interop.NodeJS').boot(
+Packages.nodejs.interop.NodeJS.boot(
+// Java.type('nodejs.interop.NodeJS').boot(
     javaToJSQueue,
     function (str) {
         return eval(str);

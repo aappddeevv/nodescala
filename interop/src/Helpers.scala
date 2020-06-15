@@ -2,6 +2,7 @@ package nodejs
 package helpers
 
 import org.graalvm.polyglot._
+import org.graalvm.polyglot.proxy.ProxyExecutable
 import scala.jdk.CollectionConverters._
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.Method
@@ -259,9 +260,82 @@ extension ValueOps on (o: Value):
     def asJavaListOpt[T] = if o.hasArrayElements then Option(o.as(classOf[ju.List[T]])) else None
     def asSeqOpt[T] = o.asJavaListOpt[T].map(_.asScala.toVector)
     /** K will typically be a string or number. */
-    def asMapOpt[K,V] = if o.isHostObject then Option(o.as(classOf[ju.Map[K,V]]).asScala.toMap) else None
+    //def asMapOpt[K,V] = if o.isHostObject then Option(o.as(classOf[ju.Map[K,V]]).asScala.toMap) else None
+    // this may or may not recursively convert values
+    // docs say that if a type literal is used vs Map.class, it will *not* recurse.
+    def asMapOpt[K,V] = 
+      if o.hasMembers || o.hasArrayElements
+        Option(o.as(classOf[ju.Map[K,V]]).asScala.toMap) 
+      else 
+        None
+
+type ConvertFunction = Value => Any
+type MetadataMapping = Map[String, ConvertFunction]
 
 /** Structural type. Not sure this is right yet. */
-case class JSValue(o: Value) extends Selectable:
-    def selectDynamic(name: String): Value = o.getMember(name)
+case class JSObject(o: Value, metadata: MetadataMapping = Map()) extends Selectable:
+    def selectDynamic(name: String): Any =
+      val v = o.getMember(name)
+      metadata.get(name) match
+      case Some(convert) => convert(v)
+      case _ =>
+        if v.isString then v.asString
+        else if v.isBoolean then v.asBoolean
+        else v
 
+/** Use for type ascription on a 2 arg lamba. */
+@java.lang.FunctionalInterface
+trait PromiseExecutor:
+    // The method name can be any name but this name is chose to match the docs
+    // e.g. could be called `callback`.
+    def onPromiseCreation(resolve: Value, reject: Value): Unit
+
+import scala.concurrent._
+
+/** Convert scala Future to a Value (which is a js Promise). We really need to sync access
+ * to Context to use it. Currently implementation assumse that the EC is on the nodejs thread.
+ * We could drop the using Context and call `Context.getCurrent()` directly. We keep the
+ * given parameters in order to force the recognition of the need for these two 
+ * parameters. The execution context should execute on the same thread the Context
+ * was crerated on.
+ */ 
+def [A](f: Future[A]).toJSPromise(using ec: ExecutionContext, ctx: Context) =
+  val global = ctx.getBindings("js")
+  val p = global.getMember("Promise")
+  def executor(resolve: Value, reject: Value) =
+      f.onComplete:
+        case scala.util.Success(v) => resolve.execute(ctx.asValue(v))
+        // err is throwable, which polyglot can translate automatically
+        case scala.util.Failure(e) => reject.execute(e)
+  val n = p.newInstance(executor: PromiseExecutor)
+  n
+
+/** Convert to a JS promise but sync on the context. Only useful when
+ * you create the context yourself vs `Context.getCurrent`. The
+ * execution context and Context can be from different threads.
+ * 
+ * @todo Why can't we sync on a context obtained via `getCurrent`?
+ */
+def [A](f: Future[A]).toJSPromiseLock(using ec: ExecutionContext, ctx: Context) =
+  ctx.synchronized:
+    ctx.enter()
+    val global = ctx.getBindings("js")
+    val p = global.getMember("Promise")
+    def executor(resolve: Value, reject: Value) =
+        f.onComplete:
+          case scala.util.Success(v) => resolve.execute(ctx.asValue(v))
+          // err is throwable, which polyglot can translate automatically
+          case scala.util.Failure(e) => reject.execute(e)
+    val n = p.newInstance(executor: PromiseExecutor)
+    ctx.leave()
+    n
+
+
+/** If you enter the jvm side through a nodejs call, you can use this
+ * EC in your entry point to retain the current thread in a way that is
+ * useful to scala concurrent data structures. Any acces to JS must
+ * go through this EC.
+ */
+val currentThreadExecutionContext = ExecutionContext.fromExecutor(
+        new java.util.concurrent.Executor { def execute(runnable: Runnable) = runnable.run() }
+)

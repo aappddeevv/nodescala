@@ -5,3 +5,4 @@ download
 package-lock.json
 node_modules
 classpath.txt
+loader.mjs

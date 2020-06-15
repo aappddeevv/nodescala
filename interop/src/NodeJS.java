@@ -31,7 +31,8 @@ import java.util.jar.JarInputStream;
  * Provides an interface to the NodeJS runtime for Java developers. You can only
  * access the NodeJS world when running on the event loop thread, which means
  * you must use the various runJS methods on this class to get onto the correct
- * thread before using eval.
+ * thread before using eval. Methods which potentially create a linkage to the
+ * nodejs js context/thread, msut be called from the nodejs thread.
  */
 @SuppressWarnings("WeakerAccess")
 public class NodeJS {
@@ -67,17 +68,20 @@ public class NodeJS {
 
     private static void boot1(LinkedBlockingDeque<Runnable> taskQueue, Value evalFunction, String[] args)
             throws ClassNotFoundException, IOException {
-        assert linkage == null : "Don't call this function directly. Already started!";
-        assert evalFunction.canExecute();
-        NodeJS.linkage = new Linkage(taskQueue, evalFunction);
-        Thread.currentThread().setName("NodeJS main thread");
+        bootIfNeeded(taskQueue, evalFunction);
+        /*
+         * assert linkage == null :
+         * "Don't call this function directly. Already started!"; assert
+         * evalFunction.canExecute(); NodeJS.linkage = new Linkage(taskQueue,
+         * evalFunction); Thread.currentThread().setName("NodeJS main thread");
+         */
 
         if (args.length == 0) {
             System.err.println("You must specify at least a class name, or -jar jarname.jar");
             System.exit(1);
         } else if (!args[0].equals("-jar")) {
             Class<?> entryPoint = Class.forName(args[0]);
-            startJavaThread(entryPoint, Arrays.copyOfRange(args, 1, args.length));
+            startJavaThread(entryPoint, Arrays.copyOfRange(args, 1, args.length), true, true);
         } else {
             File myJar = new File(args[1]);
             final URL url = myJar.toURI().toURL();
@@ -109,25 +113,65 @@ public class NodeJS {
                 }
             };
             Class<?> entryPoint = Class.forName(mainClassName, true, child);
-            startJavaThread(entryPoint, Arrays.copyOfRange(args, 2, args.length));
+            startJavaThread(entryPoint, Arrays.copyOfRange(args, 2, args.length), true, true);
         }
     }
 
-    private static void startJavaThread(Class<?> entryPoint, String[] args) {
+    private static void bootIfNeeded(LinkedBlockingDeque<Runnable> taskQueue, Value evalFunction) {
+        if (linkage == null) {
+            assert evalFunction.canExecute();
+            NodeJS.linkage = new Linkage(taskQueue, evalFunction);
+            Thread.currentThread().setName("NodeJS main thread");
+        }
+    }
+
+    /**
+     * Run the main class found in entryPoint. A new JVM threaed is created to run
+     * the JVM main function in the entrypoint.
+     */
+    public static void runMain(String entryPointClassName, LinkedBlockingDeque<Runnable> taskQueue, Value evalFunction,
+            String[] args, Boolean exitOnComplete, Boolean exitOnError) throws ClassNotFoundException, IOException {
+        bootIfNeeded(taskQueue, evalFunction);
+        Class<?> entryPoint = Class.forName(entryPointClassName);
+        startJavaThread(entryPoint, args, exitOnComplete, exitOnError);
+    }
+
+    // can't pass a class object directly
+    // public static void runClass(Class<?> entryPoint,
+    // LinkedBlockingDeque<Runnable> taskQueue, Value evalFunction,
+    // String[] args, Boolean exitOnComplete, Boolean exitOnError) throws
+    // ClassNotFoundException, IOException {
+    // bootIfNeeded(taskQueue, evalFunction);
+    // startJavaThread(entryPoint, args, exitOnComplete, exitOnError);
+    // }
+
+    private static void startJavaThread(Class<?> entryPoint, String[] args, Boolean exitOnComplete,
+            Boolean exitOnError) {
         Thread javaThread = new Thread(() -> {
             try {
                 Method main = entryPoint.getMethod("main", String[].class);
                 assert Modifier.isStatic(main.getModifiers());
                 main.invoke(null, new Object[] { args });
-                System.exit(0);
+                if (exitOnComplete) {
+                    System.exit(0);
+                }
             } catch (NoSuchMethodException e) {
                 System.err.println("No main method found in " + entryPoint.getName());
+                if (exitOnError) {
+                    System.exit(1);
+                }
             } catch (InvocationTargetException e) {
                 e.getCause().printStackTrace();
+                if (exitOnError) {
+                    System.exit(1);
+                }
             } catch (Throwable e) {
                 e.printStackTrace();
+                if (exitOnError) {
+                    System.exit(1);
+                }
             }
-            System.exit(1);
+            // System.exit(1);
         }, "Java main thread");
         javaThread.start();
     }

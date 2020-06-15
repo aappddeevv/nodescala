@@ -18,6 +18,9 @@
   },
   "homepage": "https://github.com/aappddeevv/nodescala#readme",
   "dependencies": {
-    "download": "^8.0.0"
+    "apollo-server": "^2.14.4",
+    "dataloader": "^2.0.0",
+    "download": "^8.0.0",
+    "graphql": "^15.1.0"
   }
 }
