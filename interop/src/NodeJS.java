@@ -204,7 +204,6 @@ public class NodeJS {
         public void execute(/* @NotNull */Runnable command) {
             if (linkage == null)
                 throw new IllegalStateException("This JVM was not started using the javascipt-to-jvm boot process.");
-
             if (Thread.currentThread() == linkage.nodeJSThread)
                 command.run();
             else

@@ -4,7 +4,7 @@ import $ivy.`com.lihaoyi::mill-contrib-bloop:$MILL_VERSION`
 //import $ivy.`com.lihaoyi::mill-scalajslib:$MILL_VERSION`
 
 val graalVersion = "20.1.0"
-val zioVersion = "1.0.0-RC20"
+val zioVersion = "1.0.0-RC21"
 
 trait DottyProject extends ScalaModule {
   val scalaVersion = "0.25.0-RC1"
@@ -82,6 +82,28 @@ object example5 extends DottyProject {
         "--vm.cp",
         cp,
         "example5/resources/index.js",
+        "--"
+      )
+      .call(stdout = os.Inherit)
+  }
+}
+
+// pure zio example
+object example6 extends DottyProject {
+  def moduleDeps = Seq(interop)
+  def ivyDeps = Agg(
+    ivy"dev.zio::zio:$zioVersion".withDottyCompat(scalaVersion())
+  )
+  def start() = T.command {
+    val cps = runClasspath().map(_.path.toIO.getAbsolutePath)
+    val cp = cps.mkString(java.io.File.pathSeparator)
+    os.proc(
+        "node",
+        "--experimental-worker",
+        "--jvm",
+        "--vm.cp",
+        cp,
+        "example6/resources/index.js",
         "--"
       )
       .call(stdout = os.Inherit)

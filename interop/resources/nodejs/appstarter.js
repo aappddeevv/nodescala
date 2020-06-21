@@ -1,5 +1,5 @@
 // export a "start" function that allows you to start
-// multiple main functions each in their own thread.
+// multiple "main" functions each in their own thread.
 
 const javaToJSQueue = new java.util.concurrent.LinkedBlockingDeque();
 const {

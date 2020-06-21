@@ -4,9 +4,9 @@ package helpers
 import org.graalvm.polyglot._
 import org.graalvm.polyglot.proxy.ProxyExecutable
 import scala.jdk.CollectionConverters._
-import java.lang.reflect.InvocationHandler
-import java.lang.reflect.Method
-import java.lang.reflect.Proxy
+// import java.lang.reflect.InvocationHandler
+// import java.lang.reflect.Method
+// import java.lang.reflect.Proxy
 import scala.language.implicitConversions
 import scala.util.control.Exception._
 import java.{util => ju}
@@ -239,8 +239,8 @@ class ScalaContext:
 //             }
 //         }
 //     }
-// }
 
+// }
 /** Value extension methods. Uses *Opt suffix since Value already has as* methods.
 * scala types are immutable.
 * 
@@ -292,12 +292,13 @@ trait PromiseExecutor:
 
 import scala.concurrent._
 
-/** Convert scala Future to a Value (which is a js Promise). We really need to sync access
- * to Context to use it. Currently implementation assumse that the EC is on the nodejs thread.
- * We could drop the using Context and call `Context.getCurrent()` directly. We keep the
- * given parameters in order to force the recognition of the need for these two 
- * parameters. The execution context should execute on the same thread the Context
- * was crerated on.
+/** Convert scala Future to a Value (which is a js Promise). 
+ * We could drop the using Context parameter and call `Context.getCurrent()` directly. 
+ * However, we keep the given parameters in order to force the recognition of the 
+ * need for these two parameters. The execution context should execute on the same
+ * thread the Context was created on.
+ * 
+ * @see currentThreadExecutionContext
  */ 
 def [A](f: Future[A]).toJSPromise(using ec: ExecutionContext, ctx: Context) =
   val global = ctx.getBindings("js")
@@ -311,8 +312,10 @@ def [A](f: Future[A]).toJSPromise(using ec: ExecutionContext, ctx: Context) =
   n
 
 /** Convert to a JS promise but sync on the context. Only useful when
- * you create the context yourself vs `Context.getCurrent`. The
- * execution context and Context can be from different threads.
+ * you create the context yourself vs using `Context.getCurrent`. The
+ * execution context and Context can be from different threads. You cannot
+ * sync on the context from `Context.getCurrent` and an exception
+ * will be thrown.
  * 
  * @todo Why can't we sync on a context obtained via `getCurrent`?
  */
@@ -331,11 +334,78 @@ def [A](f: Future[A]).toJSPromiseLock(using ec: ExecutionContext, ctx: Context) 
     n
 
 
-/** If you enter the jvm side through a nodejs call, you can use this
+/** If you enter the jvm world through a nodejs call, use this
  * EC in your entry point to retain the current thread in a way that is
- * useful to scala concurrent data structures. Any acces to JS must
- * go through this EC.
+ * useful to scala concurrent processing. Any access to JS values through
+ * `Context.getCurrent` or non-converted values must be run on this executor
+ * which captures the initial thread that the JVM entrypoint was called on and
+ * hence, the nodejs thread.
  */
-val currentThreadExecutionContext = ExecutionContext.fromExecutor(
-        new java.util.concurrent.Executor { def execute(runnable: Runnable) = runnable.run() }
-)
+def currentThreadExecutionContext(t: Thread = Thread.currentThread) = 
+  ExecutionContext.fromExecutor(
+        new java.util.concurrent.Executor { 
+          def execute(runnable: Runnable) = runnable.run() 
+        }
+  )
+
+/** Should only be called with the node JS Thread. Typically this is
+ * thread you are on upon entering a JVM function called from nodejs.
+ * 
+ * @parameter queue Queue used by a js worker to run callbacks in the nodejs thread.
+ * @parameter nodeJSThread The nodejs thread. Uses the current thread by default. 
+ */
+def makeEC(
+  queue: java.util.concurrent.LinkedBlockingDeque[Runnable], 
+  nodeJSThread: Thread = Thread.currentThread
+) =
+    import java.util.concurrent._
+    ExecutionContext.fromExecutor(
+      new Executor:
+        def execute(command: Runnable) =
+            if Thread.currentThread == nodeJSThread then command.run()
+            else queue.add(command)
+    )
+
+/** Should only be called with the nodejs thread. Uses polyglot bindings
+ * to retrieve a synchronized queue to push callbacks into that are run
+ * on the nodejs thread. You could also create this inside an effect.
+*/
+def makeECFromBindings(
+    nodeJSThread: Thread = Thread.currentThread,
+    queueName: String = "javaToJSQueue"
+) =
+  import java.util.concurrent._
+  val queue = Context
+    .getCurrent
+    .getPolyglotBindings
+    .getMember(queueName).as(classOf[java.util.concurrent.LinkedBlockingDeque[Runnable]])
+  require(queue != null)
+  ExecutionContext.fromExecutor(
+    new Executor:
+      def execute(command: Runnable) =
+          if Thread.currentThread == nodeJSThread then command.run()
+          else queue.add(command)
+  )
+
+/** Always calls the queue to run the callback, skipping checks for
+ * the current thread. Use this if you always know you are on a different thread.
+ * Uses polyglot bindings to obtain the queue. You could also create this inside an effect.
+ */
+def makeECFromBindingsAlwaysQueue(
+  nodeJSThread: Thread = Thread.currentThread,
+  queueName: String = "javaToJSQueue"
+) =
+  import java.util.concurrent._
+  val queue = Context
+    .getCurrent
+    .getPolyglotBindings
+    .getMember(queueName).as(classOf[java.util.concurrent.LinkedBlockingDeque[Runnable]])
+  require(queue != null)
+  ExecutionContext.fromExecutor(
+    new Executor:
+      def execute(command: Runnable) =
+        queue.add(command)
+
+  )
+  
+  

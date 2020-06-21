@@ -34,8 +34,8 @@ worker.on('message', (callback) => {
     try {
         callback();
     } catch (e) {
-        console.log(`Error running callback from JVM: ${e}`);
-        console.log(e)
+        console.error(`Error running callback from JVM: ${e}`);
+        console.error(e)
     }
 });
 
@@ -44,7 +44,7 @@ const sliceStart = process.argv ? process.argv.indexOf("--") : -1
 // We need this wrapper around eval because GraalJS barfs if we try to call eval() directly from Java context, it assumes
 // it will only ever be called from JS context.
 Packages.nodejs.interop.NodeJS.boot(
-// Java.type('nodejs.interop.NodeJS').boot(
+    // Java.type('nodejs.interop.NodeJS').boot(
     javaToJSQueue,
     function (str) {
         return eval(str);

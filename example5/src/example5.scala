@@ -13,7 +13,6 @@ type Book = JSObject:
 
 val BookMetadata = Map(
     "pages" -> ((value: Value) => value.asInt),
-    //"pages" -> _.asInt
 )
 
 def (v: Value).asBook = JSObject(v, BookMetadata).asInstanceOf[Book]
